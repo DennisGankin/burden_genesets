@@ -135,7 +135,7 @@ def double_occurances(combined_df, col="snp"):
     return duplicates
 
 
-def main():
+def analyze_data():
     annot_filepath = 'data/PTV_test/PTV_test.chr1.REGENIE.annotationFile.txt'
     geneset_df = read_gene_sets('data/burden_test_modules.obj')
     regenie_setlist = read_setlist('data/PTV_test/PTV_test.chr1.REGENIE.setListFile.txt')
@@ -197,7 +197,98 @@ def main():
     #converted_df = convert_annotation(annot_filepath, geneset_df)
     #print(converted_df.head())
 
+def convert_setlist(filename, transcript_map, outdir='data/converted_setlists'):
+    """
+    Converts a setlist file to a DataFrame with gene sets.
+    
+    Args:
+        filename (str): Path to the setlist file.
+        transcript_map (pd.DataFrame): DataFrame containing transcript to gene mapping.
+        
+    Returns:
+        pd.DataFrame: DataFrame with gene sets and transcripts.
+    """
+    setlist_df = read_setlist(filename)
+    # merge with transcript map
+    merged_df = setlist_df.merge(transcript_map, on='transcript', how='inner')
+    # assert no Nans in gene_set col
+    assert not merged_df['gene_set'].isna().any(), f"NaNs found in gene_set column for {chrom}."
+
+    # check if we have duplicate gene entries
+    #duplicates = merged_df[merged_df.duplicated(subset=['transcript'], keep=False)]
+    #print(duplicates.head())
+    #if not duplicates.empty:
+    #    print(f"Warning: Found {duplicates.transcript.nunique()} transcripts that appear more than once in the setlist for {os.path.basename(filename)}.")
+    #    return
+
+    # explode the snp colum, split string by ,
+    merged_df['snp'] = merged_df['snp'].str.split(',')
+    merged_df = merged_df.explode('snp')
+    # groupby gene_set and collapse the snp column into a set
+    merged_df = merged_df.groupby(['gene_set', 'chrom', 'pos']).agg({'snp': set}).reset_index()
+    # convert the set to a string
+    merged_df['snp'] = merged_df['snp'].apply(lambda x: ','.join(x) if isinstance(x, set) else x)
+
+    # save to file in ['gene_set', 'chr', 'pos', 'snp'] order of columns, tab separated no header
+    merged_df[['gene_set', 'chrom', 'pos', 'snp']].to_csv(
+        os.path.join(outdir, os.path.basename(filename)),
+        sep='\t',
+        header=False,
+        index=False
+    )
+
+def convert_annot(filename, transcript_map, outdir='data/converted_annotations'):
+    """
+    Converts an annotation file to a DataFrame with gene sets.
+    
+    Args:
+        filename (str): Path to the annotation file.
+        transcript_map (pd.DataFrame): DataFrame containing transcript to gene mapping.
+        
+    Returns:
+        pd.DataFrame: DataFrame with gene sets and annotations.
+    """
+    annot_df = read_regenie_annotation(filename)
+    # merge with transcript map
+    merged_df = annot_df.merge(transcript_map, on='transcript', how='inner')
+    assert not merged_df['gene_set'].isna().any(), f"NaNs found in gene_set column for {chrom}."
+
+    # save to file in snp, gene_set, snp_set order of columns, tab seperated no header
+    merged_df[['snp', 'gene_set', 'snp_set']].to_csv(
+        os.path.join(outdir, os.path.basename(filename)),
+        sep='\t',
+        header=False,
+        index=False
+    )
+    
+
+def convert_data(out_dir='data/PTV_genesets'):
+    # load the gene set
+    geneset_df = read_gene_sets('data/burden_test_modules.obj')
+    # load transcript to gene map
+    transcript_to_gene = pd.read_csv('data/transcript_gene_map.csv')
+    transcript_to_gene.columns = ['chrom', 'transcript', 'gene', 'gene_symbol']
+    # merge the gene set with the transcript to gene map
+    merged_df = transcript_to_gene.merge(geneset_df, on='gene', how='inner')
+    
+    # loop through all chromosomes
+    for chrom in get_chromosomes():
+        print(f"Processing chromosome: {chrom}")
+        # read the setlist file for the chromosome
+        setlist_file = f'data/PTV_test/PTV_test.{chrom}.REGENIE.setListFile.txt'
+        if os.path.exists(setlist_file):
+            convert_setlist(setlist_file, merged_df, outdir=out_dir)
+        else:
+            print(f"Setlist file for {chrom} does not exist: {setlist_file}")
+        annot_file = f'data/PTV_test/PTV_test.{chrom}.REGENIE.annotationFile.txt'
+        if os.path.exists(annot_file):
+            convert_annot(annot_file, merged_df, outdir=out_dir)
+        else:
+            print(f"Annotation file for {chrom} does not exist: {annot_file}")
+
+    print("Conversion completed for all chromosomes.")
 
 
 if __name__ == "__main__":
-    main()
+    #analyze_data()
+    convert_data()
