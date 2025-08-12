@@ -225,12 +225,12 @@ def convert_setlist(filename, transcript_map, outdir='data/converted_setlists'):
     merged_df['snp'] = merged_df['snp'].str.split(',')
     merged_df = merged_df.explode('snp')
     # groupby gene_set and collapse the snp column into a set
-    merged_df = merged_df.groupby(['gene_set', 'chrom', 'pos']).agg({'snp': set}).reset_index()
+    merged_df = merged_df.groupby(['gene_set', 'chr', 'pos']).agg({'snp': set}).reset_index()
     # convert the set to a string
     merged_df['snp'] = merged_df['snp'].apply(lambda x: ','.join(x) if isinstance(x, set) else x)
 
     # save to file in ['gene_set', 'chr', 'pos', 'snp'] order of columns, tab separated no header
-    merged_df[['gene_set', 'chrom', 'pos', 'snp']].to_csv(
+    merged_df[['gene_set', 'chr', 'pos', 'snp']].to_csv(
         os.path.join(outdir, os.path.basename(filename)),
         sep='\t',
         header=False,
