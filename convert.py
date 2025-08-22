@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import glob
+import shutil
 
 def get_chromosomes():
     """
@@ -225,17 +226,40 @@ def convert_setlist(filename, transcript_map, outdir='data/converted_setlists'):
     merged_df['snp'] = merged_df['snp'].str.split(',')
     merged_df = merged_df.explode('snp')
     # groupby gene_set and collapse the snp column into a set
-    merged_df = merged_df.groupby(['gene_set', 'chr', 'pos']).agg({'snp': set}).reset_index()
+    merged_df = merged_df.groupby(['gene_set', 'chr']).agg({'snp': set, 'pos': list}).reset_index()
+    merged_df['pos'] = merged_df['pos'].apply(lambda x: x[0])
     # convert the set to a string
     merged_df['snp'] = merged_df['snp'].apply(lambda x: ','.join(x) if isinstance(x, set) else x)
 
     # save to file in ['gene_set', 'chr', 'pos', 'snp'] order of columns, tab separated no header
     merged_df[['gene_set', 'chr', 'pos', 'snp']].to_csv(
-        os.path.join(outdir, os.path.basename(filename)),
+        os.path.join(outdir, os.path.basename(filename.replace("_test", "_genesets"))),
         sep='\t',
         header=False,
         index=False
     )
+    return merged_df
+
+def dedup_setlist(setlist_df):
+    """
+    Deduplicates a setlist DataFrame by combining multiple occurrences of the same set.
+
+    Args:
+        setlist_df (pd.DataFrame): DataFrame containing the setlist.
+
+    Returns:
+        pd.DataFrame: Deduplicated setlist DataFrame.
+    """
+    # explode the snp colum, split string by ,
+    setlist_df['snp'] = setlist_df['snp'].str.split(',')
+    setlist_df = setlist_df.explode('snp')
+    # groupby gene_set and collapse the snp column into a set
+    setlist_df = setlist_df.groupby(['gene_set']).agg({'snp': set, 'pos': list, 'chr': list}).reset_index()
+    setlist_df['chr'] = setlist_df['chr'].apply(lambda x: x[0])
+    setlist_df['pos'] = setlist_df['pos'].apply(lambda x: x[0])
+    # convert the set to a string
+    setlist_df['snp'] = setlist_df['snp'].apply(lambda x: ','.join(x) if isinstance(x, set) else x)
+    return setlist_df
 
 def convert_annot(filename, transcript_map, outdir='data/converted_annotations'):
     """
@@ -255,12 +279,12 @@ def convert_annot(filename, transcript_map, outdir='data/converted_annotations')
 
     # save to file in snp, gene_set, snp_set order of columns, tab seperated no header
     merged_df[['snp', 'gene_set', 'snp_set']].to_csv(
-        os.path.join(outdir, os.path.basename(filename)),
+        os.path.join(outdir, os.path.basename(filename.replace("_test", "_genesets"))),
         sep='\t',
         header=False,
         index=False
     )
-    
+    return merged_df
 
 def convert_data(out_dir='data/PTV_genesets'):
     # load the gene set
@@ -270,21 +294,41 @@ def convert_data(out_dir='data/PTV_genesets'):
     transcript_to_gene.columns = ['chrom', 'transcript', 'gene', 'gene_symbol']
     # merge the gene set with the transcript to gene map
     merged_df = transcript_to_gene.merge(geneset_df, on='gene', how='inner')
-    
+
+    # create a combined setlist and annotation dataframe
+    combined_setlist = pd.DataFrame()
+    combined_annotations = pd.DataFrame()
+
     # loop through all chromosomes
     for chrom in get_chromosomes():
         print(f"Processing chromosome: {chrom}")
         # read the setlist file for the chromosome
         setlist_file = f'data/PTV_test/PTV_test.{chrom}.REGENIE.setListFile.txt'
         if os.path.exists(setlist_file):
-            convert_setlist(setlist_file, merged_df, outdir=out_dir)
+            tmp_df = convert_setlist(setlist_file, merged_df, outdir=out_dir)
+            combined_setlist = pd.concat([combined_setlist, tmp_df], ignore_index=True)
         else:
             print(f"Setlist file for {chrom} does not exist: {setlist_file}")
+
         annot_file = f'data/PTV_test/PTV_test.{chrom}.REGENIE.annotationFile.txt'
         if os.path.exists(annot_file):
-            convert_annot(annot_file, merged_df, outdir=out_dir)
+            tmp_df = convert_annot(annot_file, merged_df, outdir=out_dir)
+            combined_annotations = pd.concat([combined_annotations, tmp_df], ignore_index=True)
         else:
             print(f"Annotation file for {chrom} does not exist: {annot_file}")
+        # copy the maskfiles, and rename
+        mask_file = f'data/PTV_test/PTV_test.{chrom}.REGENIE.maskfile.txt'
+        if os.path.exists(mask_file):
+            out_name = f'PTV_genesets.{chrom}.REGENIE.maskfile.txt'
+            shutil.copy(mask_file, os.path.join(out_dir, out_name))
+        else:
+            print(f"Mask file for {chrom} does not exist: {mask_file}")
+
+    combined_setlist = dedup_setlist(combined_setlist)
+
+    # save combined setlist and annotations
+    combined_setlist[['gene_set', 'chr', 'pos', 'snp']].to_csv(os.path.join(out_dir, f'PTV_genesets.allchr.REGENIE.setListFile.txt'), sep='\t', header=False, index=False)
+    combined_annotations[['snp', 'gene_set', 'snp_set']].to_csv(os.path.join(out_dir, f'PTV_genesets.allchr.REGENIE.annotationFile.txt'), sep='\t', header=False, index=False)
 
     print("Conversion completed for all chromosomes.")
 
