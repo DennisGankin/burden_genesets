@@ -288,7 +288,7 @@ def convert_annot(filename, transcript_map, outdir='data/converted_annotations')
 
 def convert_data(out_dir='data/PTV_genesets'):
     # load the gene set
-    geneset_df = read_gene_sets('data/burden_test_modules.obj')
+    geneset_df = read_gene_sets('data/burden_test_modules_exp2.obj')
     # load transcript to gene map
     transcript_to_gene = pd.read_csv('data/transcript_gene_map.csv')
     transcript_to_gene.columns = ['chrom', 'transcript', 'gene', 'gene_symbol']
@@ -327,8 +327,8 @@ def convert_data(out_dir='data/PTV_genesets'):
     combined_setlist = dedup_setlist(combined_setlist)
 
     # save combined setlist and annotations
-    combined_setlist[['gene_set', 'chr', 'pos', 'snp']].to_csv(os.path.join(out_dir, f'PTV_genesets.allchr.REGENIE.setListFile.txt'), sep='\t', header=False, index=False)
-    combined_annotations[['snp', 'gene_set', 'snp_set']].to_csv(os.path.join(out_dir, f'PTV_genesets.allchr.REGENIE.annotationFile.txt'), sep='\t', header=False, index=False)
+    combined_setlist[['gene_set', 'chr', 'pos', 'snp']].to_csv(os.path.join(out_dir, f'PTV_genesets_ext2.allchr.REGENIE.setListFile.txt'), sep='\t', header=False, index=False)
+    combined_annotations[['snp', 'gene_set', 'snp_set']].to_csv(os.path.join(out_dir, f'PTV_genesets_ext2.allchr.REGENIE.annotationFile.txt'), sep='\t', header=False, index=False)
 
     print("Conversion completed for all chromosomes.")
 
